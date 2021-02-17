@@ -1,0 +1,14 @@
+side-nav:
+  - title: 序言
+    url: /introduction
+  - title: 基础数据结构和对象系统
+    url: /sds
+    children:
+      - title: "Simple Dynamic String"
+        url: /sds
+  # - title: "其他主题"
+  #   url: /memory_management
+  #   children: 
+  #     - title: "Redis 内存管理"
+  #       url: /memory_management
+      
