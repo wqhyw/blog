@@ -1,8 +1,8 @@
 title: Redis Reading
 email: wqhyw2@gmail.com
 description: Redis source code notes
-# baseurl: "/redis_reading"
-# url: "https://wqhyw.github.io"
+baseurl: "/blog"
+url: "https://wqhyw.github.io"
 github_username:  wqhyw
 
 plugins:
