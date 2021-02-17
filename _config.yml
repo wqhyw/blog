@@ -1,7 +1,7 @@
 title: Redis Reading
 email: wqhyw2@gmail.com
 description: Redis source code notes
-baseurl: "/blog"
+baseurl: /blog
 url: "https://wqhyw.github.io"
 github_username:  wqhyw
 
