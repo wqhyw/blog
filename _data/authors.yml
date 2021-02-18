@@ -1,0 +1,15 @@
+wqhyw:
+  name: "wqhyw"
+  bio: "Long may the sun shine!"
+  avatar: "/assets/img/avatar.jpg"
+  location: "Chengdu, Sichuan, China"
+  links:
+    - label: "Email"
+      icon: "fas fa-fw fa-envelope-square"
+      url: "mailto:wqhyw2@gmail.com"
+    - label: "Website"
+      icon: "fas fa-fw fa-link"
+      url: "https://wqhyw.github.io/blog/"
+    - label: "Github"
+      icon: "fab fa-fw fa-github"
+      url: "https://github.com/wqhyw"

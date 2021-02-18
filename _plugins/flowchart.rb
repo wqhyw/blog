@@ -4,9 +4,9 @@ class FlowchartBlock < Liquid::Block
     def render(context)
         text = super.to_s
         uuid = SecureRandom.uuid
-        canvas = "canvas-#{uuid}"
+        canvas = "flowchart-canvas-#{uuid}"
         area = "area-#{uuid}"
-        path = "#{context['site.url']}#{context['site.baseurl']}"
+        path = "#{context['site.baseurl']}"
         <<~CB
         <div id="#{canvas}"></div>
         <textarea id="#{area}" style="display:none;">#{text}</textarea>
@@ -24,6 +24,13 @@ class FlowchartBlock < Liquid::Block
                         'maxWidth': 3,
                         'font-size': 11});
                     area.remove();
+
+                    setTimeout(() => {
+                        for(var x of document.querySelectorAll("div[id^=flowchart-canvas] svg")) {
+                            x.removeAttribute("height");
+                            x.removeAttribute("width");
+                        }
+                    }, 500)
                 });
             }
         </script>
