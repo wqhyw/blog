@@ -1,12 +1,11 @@
-title: Redis Reading
+title: wqhyw's blog
 email: wqhyw2@gmail.com
-description: Redis source code notes
+description: Long may the sun shine!
 baseurl: /blog
-url: "https://wqhyw.github.io"
+# url: "https://wqhyw.github.io"
 github_username:  wqhyw
 
 plugins:
-  - jekyll-spaceship
   - jekyll-archives
 
 theme: minimal-mistakes-jekyll
@@ -17,18 +16,7 @@ search_full_content: true
 breadcrumbs: true
 breadcrumb_home_label : "Home"
 breadcrumb_separator  : ">"
-
-# jekyll-spaceship config
-jekyll-spaceship:
-  processors:
-    - mermaid-processor
-  mermaid-processor:
-    mode: pre-fetch
-    syntax:
-      code: 'mermaid'
-  config:
-    theme: neutral
-
+permalink: /:categories/:title
 defaults:
   # _posts
   - scope:
@@ -39,10 +27,8 @@ defaults:
       read_time: true
       show_date: true
       toc: true
-      toc_label: "Table of Contents"
-      toc_icon: "cog"
-      sidebar:
-        nav: "side-nav"
+      toc_icon: "align-justify"
+
 
 # Exclude from processing.
 # The following items will not be processed, by default.

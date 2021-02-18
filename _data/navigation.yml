@@ -1,11 +1,15 @@
+main:
+  - title: "Categories"
+    url: /categories
+
 side-nav:
   - title: 序言
-    url: /introduction
+    url: /redis/introduction
   - title: 基础数据结构和对象系统
-    url: /sds
+    url: /redis/sds
     children:
       - title: "Simple Dynamic String"
-        url: /sds
+        url: /redis/sds
   # - title: "其他主题"
   #   url: /memory_management
   #   children: 

@@ -1,7 +1,9 @@
 ---
 layout: single
 title: Introduction
-permalink: /introduction
+categories: Redis
+sidebar:
+    nav: "side-nav"
 ---
 
 Redis 源码阅读与分析。目标版本为5.0.10，即5.0最新的稳定版。6.0及以后的变更考虑以增补形式加入。
