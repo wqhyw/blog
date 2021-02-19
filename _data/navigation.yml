@@ -8,8 +8,10 @@ side-nav:
   - title: 基础数据结构和对象系统
     url: /redis/sds
     children:
-      - title: "Simple Dynamic String"
+      - title: "简单动态字符串"
         url: /redis/sds
+      - title: "双向链表"
+        url: /redis/adlist
   # - title: "其他主题"
   #   url: /memory_management
   #   children: 

@@ -10,7 +10,7 @@ plugins:
 
 theme: minimal-mistakes-jekyll
 
-minimal_mistakes_skin: dirt
+minimal_mistakes_skin: contrast
 search: true
 search_full_content: true
 breadcrumbs: true
@@ -28,6 +28,7 @@ defaults:
       show_date: true
       toc: true
       toc_icon: "align-justify"
+      toc_label: 目录
 
 # Exclude from processing.
 # The following items will not be processed, by default.
