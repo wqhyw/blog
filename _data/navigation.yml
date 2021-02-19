@@ -12,6 +12,8 @@ side-nav:
         url: /redis/sds
       - title: "双向链表"
         url: /redis/adlist
+      - title: "字典（哈希表）"
+        url: /redis/hash-table
   # - title: "其他主题"
   #   url: /memory_management
   #   children: 
