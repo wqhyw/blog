@@ -14,7 +14,7 @@ Redis 中哈希表是键-值对类型的底层实现。可以自动扩容，并�
 > - dict.c
 
 
-![dict]({{ site.baseurl }}/assets/img/dict.png)
+[![dict]({{ site.baseurl }}/assets/img/dict.png)]({{ site.baseurl }}/assets/img/dict.png)
 
 
 # 参考
