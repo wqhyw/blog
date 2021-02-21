@@ -1,0 +1,891 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.2.0">Jekyll</generator><link href="/blog/feed.xml" rel="self" type="application/atom+xml" /><link href="/blog/" rel="alternate" type="text/html" /><updated>2021-02-21T12:18:40+00:00</updated><id>/blog/feed.xml</id><title type="html">wqhyw’s blog</title><subtitle>Long may the sun shine!</subtitle><entry><title type="html">Doubly Linked List</title><link href="/blog/redis/adlist" rel="alternate" type="text/html" title="Doubly Linked List" /><published>2021-02-19T00:00:00+00:00</published><updated>2021-02-19T00:00:00+00:00</updated><id>/blog/redis/adlist</id><content type="html" xml:base="/blog/redis/adlist">&lt;p&gt;链表是线性表的一种实现，在 Redis 中也是列表类型的底层实现之一。C 标准库没有内建的链表类型，所以 Redis 自己实现了一个泛型双向链表。由于链表的操作和结构有广泛的认识基础，本文仅做简单说明。&lt;/p&gt;
+
+&lt;h1 id=&quot;概述&quot;&gt;概述&lt;/h1&gt;
+
+&lt;blockquote&gt;
+  &lt;ul&gt;
+    &lt;li&gt;adlist.h&lt;/li&gt;
+    &lt;li&gt;adlist.c&lt;/li&gt;
+  &lt;/ul&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Redis 中的链表是一个带头节点的双向链表，同时头节点还有指向尾部的指针域。结构如图示：&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&quot;/blog/assets/img/adlist.png&quot;&gt;&lt;img src=&quot;/blog/assets/img/adlist.png&quot; alt=&quot;adlist&quot; /&gt;&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;同时 Redis 中还定义了一个迭代器，指向链表中的一个节点并且标识出来迭代方向。定义如下：&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;table class=&quot;rouge-table&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;gutter gl&quot;&gt;&lt;pre class=&quot;lineno&quot;&gt;1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;c1&quot;&gt;//adlist.h:42&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;typedef&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;listIter&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;listNode&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;next&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;direction&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;listIter&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;//adlist.h:92&lt;/span&gt;
+&lt;span class=&quot;cm&quot;&gt;/* Directions for iterators */&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;#define AL_START_HEAD 0
+#define AL_START_TAIL 1&lt;/span&gt;
+&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;有结构可知，除了双向链表固有的特点之外，Redis 的双向链表还有以下特点：&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;有固定的头节点；&lt;/li&gt;
+  &lt;li&gt;头节点保存链表的长度；&lt;/li&gt;
+  &lt;li&gt;无环且头节点有指向头节点和尾节点的域；&lt;/li&gt;
+  &lt;li&gt;提供了三个函数指针，用于链表节点的复制、释放和比较，由调用方根据存储的数据类型自行实现。&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h1 id=&quot;操作&quot;&gt;操作&lt;/h1&gt;
+&lt;h2 id=&quot;内存管理&quot;&gt;内存管理&lt;/h2&gt;
+&lt;p&gt;Reids 链表主要依赖底层内存管理实现，具体分析参见章节&lt;a href=&quot;/blog/memory_management&quot;&gt;Redis 内存管理&lt;/a&gt;。比较特别的是，链表头存储了节点内存释放的函数指针，需要调用方自行实现。&lt;/p&gt;
+
+&lt;h2 id=&quot;宏函数&quot;&gt;宏函数&lt;/h2&gt;
+&lt;p&gt;链表操作的宏函数主要以取结构中某些字段为主，逻辑简单，仅贴上源码，顾名思义即可。&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;table class=&quot;rouge-table&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;gutter gl&quot;&gt;&lt;pre class=&quot;lineno&quot;&gt;1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;c1&quot;&gt;//adlist.h:56&lt;/span&gt;
+&lt;span class=&quot;cm&quot;&gt;/* Functions implemented as macros */&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;#define listLength(l) ((l)-&amp;gt;len)
+#define listFirst(l) ((l)-&amp;gt;head)
+#define listLast(l) ((l)-&amp;gt;tail)
+#define listPrevNode(n) ((n)-&amp;gt;prev)
+#define listNextNode(n) ((n)-&amp;gt;next)
+#define listNodeValue(n) ((n)-&amp;gt;value)
+&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;#define listSetDupMethod(l,m) ((l)-&amp;gt;dup = (m))
+#define listSetFreeMethod(l,m) ((l)-&amp;gt;free = (m))
+#define listSetMatchMethod(l,m) ((l)-&amp;gt;match = (m))
+&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;#define listGetDupMethod(l) ((l)-&amp;gt;dup)
+#define listGetFree(l) ((l)-&amp;gt;free)
+#define listGetMatchMethod(l) ((l)-&amp;gt;match)&lt;/span&gt;
+&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h2 id=&quot;链表的-crud&quot;&gt;链表的 CRUD&lt;/h2&gt;
+
+&lt;h3 id=&quot;创建adlistc41listcreatevoid-list-&quot;&gt;创建&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adlist.c:41#listCreate(void)-&amp;gt;list *&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;创建链表实质上是初始化一个空的头节点，申请头节点内存并将所有域置为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;NULL&lt;/code&gt;，长度设置为0。特别的，内存申请失败后返回的头节点地址为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;NULL&lt;/code&gt;。&lt;/p&gt;
+
+&lt;h3 id=&quot;复制adlistc250listduplist--list-&quot;&gt;复制&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adlist.c:250#listDup(list *)-&amp;gt;list *&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;复制链表依赖链表创建和链表迭代器。特别的，链表节点的复制依赖头节点的&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;dup&lt;/code&gt;域，可以实现多态下的节点值深拷贝。&lt;/p&gt;
+
+&lt;h3 id=&quot;节点插入&quot;&gt;节点插入&lt;/h3&gt;
+&lt;p&gt;链表增加节点分为头插、尾插和给定节点前后插入值，具体逻辑不赘述，仅列出实现的函数。&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adlist.c:88#listAddNodeHead(list *, void *)-&amp;gt;list *&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adlist.c:114#listAddNodeTail(list *, void *)-&amp;gt;list *&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adlist.c:134#listInsertNode(list *, listNode *, void *, int)-&amp;gt;list *&lt;/code&gt;
+    &lt;ul&gt;
+      &lt;li&gt;本函数做简单额外说明。形参的最后一个用作 bool 值，表示插入方向。&lt;/li&gt;
+    &lt;/ul&gt;
+  &lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;上述函数均以返回值作为链表头节点，原头节点不应有任何读写操作。如果返回值为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;NULL&lt;/code&gt;，则表明内存操作返回为空，应该以操作失败处理。&lt;/p&gt;
+
+&lt;h3 id=&quot;节点的删除与内容清空&quot;&gt;节点的删除与内容清空&lt;/h3&gt;
+&lt;p&gt;逻辑简单不赘述，仅列出函数。特别的，如果头节点&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;free&lt;/code&gt;域有值，则可以实现调用方自行析构节点。&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adlist.c:167#listDelNode(list *, listNode *)&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adlist.c:56#listEmpty(list *)&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&quot;遍历&quot;&gt;遍历&lt;/h3&gt;
+&lt;p&gt;Redis 的双向链表提供了迭代器形式的遍历，支持从头节点或尾节点的双向遍历。&lt;/p&gt;
+
+&lt;h3 id=&quot;链表的释放adlistc76listreleaselist-&quot;&gt;链表的释放&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adlist.c:76#listRelease(list *)&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;先清空链表（即释放所有节点），再释放头节点。&lt;/p&gt;
+
+&lt;h2 id=&quot;api汇总&quot;&gt;API汇总&lt;/h2&gt;
+
+&lt;p&gt;&lt;em&gt;注：调用返回值类型为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;list&lt;/code&gt;的函数后，应使用返回值作为新链表使用，原链表不应再有任何读写操作。&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;注2：复杂度中的问题规模 N 表示链表的节点数量&lt;/em&gt;&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;函数声明&lt;/th&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;源码位置&lt;/th&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;功能简要说明&lt;/th&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;时间复杂度&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;list *listCreate(void)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:41&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;初始化空的头节点&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void listRelease(list *list)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:76&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;释放链表所有节点（包括头节点）&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(N)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void listEmpty(list *list)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:56&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;释放链表所有节点（头节点除外）&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(N)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;list *listAddNodeHead(list *list, void *value)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:88&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;头插节点&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;list *listAddNodeTail(list *list, void *value)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:114&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;尾插节点&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;list *listInsertNode(list *list, listNode *old_node, void *value, int after)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:134&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;指定节点（未校验节点是否属于链表）前或后插入&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void listDelNode(list *list, listNode *node)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:167&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;删除指定节点（未校验节点是否属于链表）&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;listIter *listGetIterator(list *list, int direction)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:186&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;指定方向获取链表迭代器&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;listNode *listNext(listIter *iter)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:229&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;获取迭代器下一个指向的节点（空值表示迭代结束）&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void listReleaseIterator(listIter *iter)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:200&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;释放迭代器&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;list *listDup(list *orig)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:250&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;复制链表&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(N)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;listNode *listSearchKey(list *list, void *key)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:290&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;列表中查找指定值（值比较可以由调用方自定义）的节点，未找到时返回空&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(N)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;listNode *listIndex(list *list, long index)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:315&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;指定索引（起点为0，负数表示从尾节点向前）查找链表节点，未找到时返回空&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(N)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void listRewind(list *list, listIter *li)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:205&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;初始化正向迭代器&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void listRewindTail(list *list, listIter *li)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:210&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;初始化逆向迭代器&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void listRotateTailToHead(list *list)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:330&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;尾节点变头节点&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void listRotateHeadToTail(list *list)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:345&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;头节点变尾节点&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void listJoin(list *l, list *o)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;adlist.c:361&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;链表追加（操作后 o 依然是有效的头节点，只是节点为空长度为0）&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;O(1)&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;h1 id=&quot;参考&quot;&gt;参考&lt;/h1&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/redis/redis/tree/5.0.10&quot;&gt;Redis源码（版本5.0.10）&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;http://shuyuan.hzmedia.com.cn/ebookdtl?id=11112416&quot;&gt;Redis设计与实现&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</content><author><name></name></author><category term="Redis" /><summary type="html">链表是线性表的一种实现，在 Redis 中也是列表类型的底层实现之一。C 标准库没有内建的链表类型，所以 Redis 自己实现了一个泛型双向链表。由于链表的操作和结构有广泛的认识基础，本文仅做简单说明。</summary></entry><entry><title type="html">Simple Dynamic String</title><link href="/blog/redis/sds" rel="alternate" type="text/html" title="Simple Dynamic String" /><published>2021-02-16T00:00:00+00:00</published><updated>2021-02-16T00:00:00+00:00</updated><id>/blog/redis/sds</id><content type="html" xml:base="/blog/redis/sds">&lt;p&gt;Redis 采用名为&lt;strong&gt;简单动态字符串（Simple Dynamic String，即 sds）&lt;/strong&gt;的结构存储字符串或二进制数据。字符串是 Redis 中五大基础数据结构之一，也是 Redis 基础值类型容器。&lt;/p&gt;
+
+&lt;script src=&quot;/blog/assets/js/raphael.min.js&quot;&gt;&lt;/script&gt;
+
+&lt;script src=&quot;/blog/assets/js/jquery.min.js&quot;&gt;&lt;/script&gt;
+
+&lt;script src=&quot;/blog/assets/js/flowchart.min.js&quot;&gt;&lt;/script&gt;
+
+&lt;script&gt;window.included = true&lt;/script&gt;
+
+&lt;h1 id=&quot;概述&quot;&gt;概述&lt;/h1&gt;
+
+&lt;blockquote&gt;
+  &lt;ul&gt;
+    &lt;li&gt;sds.h: 结构定义、操作函数声明与内联函数定义等&lt;/li&gt;
+    &lt;li&gt;sdsalloc.h: 声明内存分配与回收函数的宏定义&lt;/li&gt;
+    &lt;li&gt;sds.c: 实现&lt;/li&gt;
+  &lt;/ul&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;在 Redis 中，键一定是&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象，&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象也是值的基本容器，C 风格的字符串仅用于字面值。&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象依靠&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr&lt;/code&gt;结构实现，其定义位于&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h&lt;/code&gt;中，其结构以&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr5&lt;/code&gt;和&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr8&lt;/code&gt;（其余结构仅header中表示长度的类型不一样）为例可以表示为下图：&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;
+    &lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr5&lt;/code&gt;
+&lt;a href=&quot;/blog/assets/img/sdshdr5.png&quot;&gt;&lt;img src=&quot;/blog/assets/img/sdshdr5.png&quot; alt=&quot;sdshdr5&quot; /&gt;&lt;/a&gt;&lt;/p&gt;
+  &lt;/li&gt;
+  &lt;li&gt;
+    &lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr8&lt;/code&gt;
+&lt;a href=&quot;/blog/assets/img/sdshdr8.png&quot;&gt;&lt;img src=&quot;/blog/assets/img/sdshdr8.png&quot; alt=&quot;sdshdr8&quot; /&gt;&lt;/a&gt;&lt;/p&gt;
+  &lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr&lt;/code&gt;结构有以下特点：&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;flag&lt;/code&gt;域的低三位表示结构体类型（特别的，高五位在&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr5&lt;/code&gt;中表示长度，其余类型未使用），类型与标志位的定义如下：&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;table class=&quot;rouge-table&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;gutter gl&quot;&gt;&lt;pre class=&quot;lineno&quot;&gt;1
+2
+3
+4
+5
+6
+7
+8
+&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;c1&quot;&gt;//sds.h:76&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;#define SDS_TYPE_5  0 //0b000
+#define SDS_TYPE_8  1 //0b001
+#define SDS_TYPE_16 2 //0b010
+#define SDS_TYPE_32 3 //0b011
+#define SDS_TYPE_64 4 //0b100
+#define SDS_TYPE_MASK 7 //0b111
+#define SDS_TYPE_BITS 3&lt;/span&gt;
+&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;柔性数组&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;buf&lt;/code&gt;域的地址作为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象地址，内存上与对象头连续，同时相关函数保证&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;buf&lt;/code&gt;的最后一位一定有&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\0&lt;/code&gt;作为终止符，因而可以当做 C 风格字符串使用，可以复用 C 标准库中众多的字符串函数；&lt;/li&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域表示&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;buf&lt;/code&gt;数组中最后一个&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\0&lt;/code&gt;前面的内容长度；&lt;/li&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;alloc&lt;/code&gt;域表示&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;buf&lt;/code&gt;数组长度，不包括结尾默认自带的&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\0&lt;/code&gt;，所以&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;alloc - len = free space&lt;/code&gt;；&lt;/li&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域和&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;alloc&lt;/code&gt;域使得可以以时间复杂度 O(1) 获取长度和剩余空间等信息，不以&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\0&lt;/code&gt;为计算标准，保证了二进制安全；&lt;/li&gt;
+  &lt;li&gt;字符串内容有变动时，优先在原对象的缓冲区做拷贝，同时必要时才扩容，大大减少了内存的申请频率；&lt;/li&gt;
+  &lt;li&gt;不同的数据长度使用不同的&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr&lt;/code&gt;结构，更精准的按需使用内存。&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h1 id=&quot;操作&quot;&gt;操作&lt;/h1&gt;
+&lt;h2 id=&quot;内存管理&quot;&gt;内存管理&lt;/h2&gt;
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;使用下列函数管理内存&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:266#sds_malloc(size_t)-&amp;gt;void *&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void *sds_realloc(void *ptr, size_t size)&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void sds_free(void *ptr)&lt;/code&gt;
+上述函数均委托位于&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdsalloc.h&lt;/code&gt;中的宏函数实现内存管理，又委托&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;zmalloc.h&lt;/code&gt;中的具体定义实现。底层可以为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;tcmalloc&lt;/code&gt;、&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;jemalloc&lt;/code&gt;或标准库实现，通过&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;USE_TCMALLOC&lt;/code&gt;、&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;USE_JEMALLOC&lt;/code&gt;、&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;__APPLE__&lt;/code&gt;和&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;__GLIBC__&lt;/code&gt;等宏开关控制，具体分析参见章节&lt;a href=&quot;/blog/memory_management&quot;&gt;Redis 内存管理&lt;/a&gt;。&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;sds-对象的定义与-sdshdr-结构的转换&quot;&gt;sds 对象的定义与 sdshdr 结构的转换&lt;/h2&gt;
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象类型即&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;char *&lt;/code&gt;，定义如下：&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;table class=&quot;rouge-table&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;gutter gl&quot;&gt;&lt;pre class=&quot;lineno&quot;&gt;1
+2
+&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;c1&quot;&gt;//sds.h:43&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;typedef&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sds&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;一般的，&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象指向&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr&lt;/code&gt;结构的&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;buf&lt;/code&gt;域，因此可以通过下列操作转换为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr&lt;/code&gt;结构指针：&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;table class=&quot;rouge-table&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;gutter gl&quot;&gt;&lt;pre class=&quot;lineno&quot;&gt;1
+2
+3
+&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;c1&quot;&gt;//sds.h:83&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;#define SDS_HDR_VAR(T,s) struct sdshdr##T *sh = (void*)((s)-(sizeof(struct sdshdr##T)));
+#define SDS_HDR(T,s) ((struct sdshdr##T *)((s)-(sizeof(struct sdshdr##T))))&lt;/span&gt;
+&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;即将&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象往前移动&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr&lt;/code&gt;的结构体大小即可，如下图示：
+&lt;a href=&quot;/blog/assets/img/sds_sdshdr_transform.png&quot;&gt;&lt;img src=&quot;/blog/assets/img/sds_sdshdr_transform.png&quot; alt=&quot;sds_sdshdr_transform&quot; /&gt;&lt;/a&gt;
+其中&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;T&lt;/code&gt;表示所需&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr&lt;/code&gt;结构的类型，由需要的内容长度界定（参见&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.c:60#sdsReqType(size_t)-&amp;gt;char&lt;/code&gt;）关系如下表：&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;内容长度&lt;/th&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;sds_type&lt;/th&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;sdshdr 结构&lt;/th&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;说明&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;[0, 32)&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;SDS_TYPE_5&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr5&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;32即&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1&amp;lt;&amp;lt;5&lt;/code&gt;，存入&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;flag&lt;/code&gt;域高五位。&lt;br /&gt;实际使用中不使用此结构，因为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr5&lt;/code&gt;没有&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;alloc&lt;/code&gt;域，不能指示剩余空间&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;[32, 256)&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;SDS_TYPE_8&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr8&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;256即&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1&amp;lt;&amp;lt;8&lt;/code&gt;，所以 header 中长度域类型为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;uint8&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;[256, 65536)&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;SDS_TYPE_16&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr16&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;65536即&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1&amp;lt;&amp;lt;16&lt;/code&gt;，所以 header 中长度域类型为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;uint16&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;[65536, 4294967296)&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;SDS_TYPE_32&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr32&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;4294967296即&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1&amp;lt;&amp;lt;32&lt;/code&gt;，所以 header 中长度域类型为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;uint32&lt;/code&gt;，特别的，32位系统中最大的类型即为此，由&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;LONG_MAX == LLONG_MAX&lt;/code&gt;判断&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;大于4294967296&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;SDS_TYPE_64&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr64&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;unsigned long long&lt;/code&gt;为64位系统中最大整数，header 中长度域类型为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;uint64&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;h2 id=&quot;内联函数&quot;&gt;内联函数&lt;/h2&gt;
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象的对象头操作是以内联函数的形式实现，这些内联函数依赖&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象和&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr&lt;/code&gt;结构体的转换实现操作，也是&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象其他操作不可或缺的部分。&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;函数&lt;/th&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;说明&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:87#sdslen(const sds)-&amp;gt;size_t&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;获取对象头中&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:104#sdsavail(const sds)-&amp;gt;size_t&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;获取对象头中剩余空间，即&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;alloc - len&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:130#sdssetlen(sds, size_t)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;设置对象头&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域&lt;br /&gt;（特别的，&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr5&lt;/code&gt;的长度通过位运算设置&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;flag&lt;/code&gt;域的高5位，同时此处对&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域是否满足&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;alloc&lt;/code&gt;域限制并未做校验）&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:154#sdsinclen(sds, size_t)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;指定长度增加&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域&lt;br /&gt;（此处对&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域是否满足&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;alloc&lt;/code&gt;域限制并未做校验）&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:180#sdsalloc(const sds)-&amp;gt;size_t&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;获取对象头中&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;alloc&lt;/code&gt;域&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:197#sdssetalloc(sds, size_t)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;设置对象头&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;alloc&lt;/code&gt;域&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.c:44#sdsHdrSize(char)-&amp;gt;size_t&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;根据 sds_type 获取对象头长度&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.c:60#sdsReqType(size_t)-&amp;gt;char&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;根据内容长度获取合适的 sds_type，参见&lt;a href=&quot;#sds 对象的定义与 sdshdr 结构的转换&quot;&gt;sds 对象的定义与 sdshdr 结构的转换&lt;/a&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;h2 id=&quot;sds-对象的创建&quot;&gt;sds 对象的创建&lt;/h2&gt;
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象创建几种方式：指定内容和长度创建、由 C 风格字符串创建、由深拷贝其他&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象和创建空对象，后三种创建方式通过委托第一种方式实现。&lt;/p&gt;
+
+&lt;h3 id=&quot;指定内容和长度创建sds-sdsnewlenconst-void-init-size_t-initlen&quot;&gt;指定内容和长度创建&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsnewlen(const void *init, size_t initlen)&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;函数声明位于&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:217&lt;/code&gt;，函数实现位于&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.c:89&lt;/code&gt;，所有创建操作依赖此。实现逻辑如下图示：&lt;/p&gt;
+
+&lt;div id=&quot;flowchart-canvas-65a1d77e-aeb5-49aa-b5a1-aef57819df27&quot;&gt;&lt;/div&gt;
+&lt;textarea id=&quot;area-65a1d77e-aeb5-49aa-b5a1-aef57819df27&quot; style=&quot;display:none;&quot;&gt;
+A=&amp;gt;start: START
+B=&amp;gt;operation: 由initlen获取sds_type
+C=&amp;gt;condition: sys_type为SDS_TYPE_5
+D=&amp;gt;operation: 使用sds_type指定为SDS_TYPE_8
+E=&amp;gt;operation: 由sds_type获取对象头大小至hdrlen
+F=&amp;gt;operation: 分配大小为hdrlen+initlen+1的内存空间至sh
+G=&amp;gt;condition: init内容为SDS_NOINIT
+H=&amp;gt;operation: init指为NULL
+I=&amp;gt;condition: init为空
+J=&amp;gt;operation: 以0填充sh内容
+K=&amp;gt;condition: sh为NULL
+L=&amp;gt;operation: 获取buf域地址和flag域地址
+M=&amp;gt;operation: 设置len域和alloc域为initlen
+N=&amp;gt;operation: 设置flag域为sds_type
+O=&amp;gt;condition: initlen&amp;gt;0且init不为NULL
+P=&amp;gt;operation: init内容copy至buf域中
+Q=&amp;gt;operation: 设置buf域最后一位为\0
+ZX=&amp;gt;operation: 返回NULL
+ZY=&amp;gt;operation: 返回buf域地址
+ZZ=&amp;gt;end: END
+
+A-&amp;gt;B-&amp;gt;C
+C(yes)-&amp;gt;D-&amp;gt;E
+C(no)-&amp;gt;E-&amp;gt;F-&amp;gt;G
+G(yes)-&amp;gt;H-&amp;gt;L
+G(no)-&amp;gt;I
+I(yes)-&amp;gt;J-&amp;gt;L
+I(no)-&amp;gt;K
+K(yes)-&amp;gt;ZX
+K(no)-&amp;gt;L
+L-&amp;gt;M-&amp;gt;N-&amp;gt;O
+O(yes)-&amp;gt;P-&amp;gt;Q
+O(no)-&amp;gt;Q
+Q-&amp;gt;ZY-&amp;gt;ZZ
+ZX-&amp;gt;ZZ
+
+&lt;/textarea&gt;
+&lt;script&gt;
+    if (typeof($) === &quot;undefined&quot;) {
+        alert(&quot;include flowchart.html!&quot;);
+    } else {
+        $(function() {
+            let area = document.getElementById(&quot;area-65a1d77e-aeb5-49aa-b5a1-aef57819df27&quot;);
+            let ctx = area.value;
+        
+            chart = flowchart.parse(ctx);
+            chart.drawSVG(&quot;flowchart-canvas-65a1d77e-aeb5-49aa-b5a1-aef57819df27&quot;, {
+                'line-width': 2,
+                'maxWidth': 3,
+                'font-size': 11});
+            area.remove();
+
+            setTimeout(() =&gt; {
+                for(var x of document.querySelectorAll(&quot;div[id^=flowchart-canvas] svg&quot;)) {
+                    x.removeAttribute(&quot;height&quot;);
+                    x.removeAttribute(&quot;width&quot;);
+                }
+            }, 500)
+        });
+    }
+&lt;/script&gt;
+
+&lt;h3 id=&quot;由-c-风格字符串创建sds-sdsnewconst-char-init&quot;&gt;由 C 风格字符串创建&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsnew(const char *init)&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;函数声明位于&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:218&lt;/code&gt;，函数实现位于&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.c:154&lt;/code&gt;。通过&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&amp;lt;string.h&amp;gt;#strlen(const char *)-&amp;gt;size_t&lt;/code&gt;获取字符串长度（&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;NULL&lt;/code&gt;则长度为0），委托&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdsnewlen&lt;/code&gt;实现创建。&lt;/p&gt;
+
+&lt;h3 id=&quot;深拷贝其他-sds-对象sds-sdsdupconst-sds-s&quot;&gt;深拷贝其他 sds 对象&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsdup(const sds s)&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;函数声明位于&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:221&lt;/code&gt;，函数实现位于&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.c:169&lt;/code&gt;。通过&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:87#sdslen(const sds)-&amp;gt;size_t&lt;/code&gt;获取字符串长度，委托&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdsnewlen&lt;/code&gt;实现创建。&lt;/p&gt;
+
+&lt;h3 id=&quot;创建空对象sds-sdsemptyvoid&quot;&gt;创建空对象&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsempty(void)&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;函数声明位于&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:219&lt;/code&gt;，函数实现位于&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.c:149&lt;/code&gt;。指定空字符串字面值&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&quot;&quot;&lt;/code&gt;和长度0委托&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdsnewlen&lt;/code&gt;实现创建。&lt;/p&gt;
+
+&lt;h2 id=&quot;sds-对象的释放&quot;&gt;sds 对象的释放&lt;/h2&gt;
+&lt;p&gt;sds 对象主要通过&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:268#sds_free(void *)&lt;/code&gt;释放内存空间，最终委托 Redis 内存管理中的 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;zfree&lt;/code&gt;函数实现，也可以直接调用&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;zfree&lt;/code&gt;释放内存。详细内容参见章节&lt;a href=&quot;/blog/memory_management&quot;&gt;Redis 内存管理&lt;/a&gt;。&lt;/p&gt;
+
+&lt;h2 id=&quot;sds-对象低层-api&quot;&gt;sds 对象低层 API&lt;/h2&gt;
+&lt;p&gt;Redis 暴露出来了一些&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象的底层 API，例如分配空间保证缓冲区不溢出等。&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;的 API 实现也或多或少依赖这些函数。&lt;/p&gt;
+
+&lt;h3 id=&quot;sds-sdsmakeroomforsds-s-size_t-addlen&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsMakeRoomFor(sds s, size_t addlen)&lt;/code&gt;&lt;/h3&gt;
+&lt;blockquote&gt;
+  &lt;p&gt;[sds.c:198]&lt;br /&gt;
+Enlarge the free space at the end of the sds string so that the caller is sure that after calling this function can overwrite up to addlen bytes after the end of the string, plus one more byte for nul term.
+Note: this does not change the &lt;em&gt;length&lt;/em&gt; of the sds string as returned by sdslen(), but only the free buffer space we have.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;此函数主要作用是在&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;buf&lt;/code&gt;域后增加内容时，剩余空间不足以分配&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;addlen&lt;/code&gt;时扩充额外空间（并不改变缓冲区已有内容，&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域不变），确保缓冲区不溢出。所有往&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象追加内容的操作前，都应该调用此函数。功能逻辑如图示：&lt;/p&gt;
+
+&lt;div id=&quot;flowchart-canvas-4bf4aa5a-8664-4c5e-9842-a114a70a5692&quot;&gt;&lt;/div&gt;
+&lt;textarea id=&quot;area-4bf4aa5a-8664-4c5e-9842-a114a70a5692&quot; style=&quot;display:none;&quot;&gt;
+A=&amp;gt;start: START
+B=&amp;gt;operation: 获取缓冲区当前剩余空间avail
+C=&amp;gt;operation: 获取当前sds_type
+D=&amp;gt;condition: avail&amp;gt;=add_len
+E=&amp;gt;operation: 获取当前缓冲区内容长度len
+F=&amp;gt;operation: newlen=len+addlen
+G=&amp;gt;condition: newlen&amp;lt;SDS_MAX_PREALLOC
+H=&amp;gt;operation: newlen*=2 即申请与内容相同的额外空间
+I=&amp;gt;operation: newlen+=SDS_MAX_PREALLOC 即只多申请1MiB的额外空间
+J=&amp;gt;operation: 根据newlen计算新sds_type
+KK=&amp;gt;operation: 根据sds_type计算对象头长度hdrlen
+K=&amp;gt;condition: sds_type不变
+L=&amp;gt;operation: 调用realloc扩容缓冲区大小至 hdrlen+newlen+1
+M=&amp;gt;condition: 扩容结果为NULL
+N=&amp;gt;operation: 置alloc域为newlen
+O=&amp;gt;operation: 调用malloc申请新空间大小为 hdrlen+newlen+1
+P=&amp;gt;condition: 申请新空间为空
+Q=&amp;gt;operation: 拷贝原字符串至新地址
+R=&amp;gt;operation: 释放原sds对象
+S=&amp;gt;operation: 设置sds_type至新对象flag域
+T=&amp;gt;operation: 设置len至新对象len域
+ZX=&amp;gt;operation: 返回原sds对象地址
+ZY=&amp;gt;operation: 返回NULL
+ZZ=&amp;gt;end: END
+
+A-&amp;gt;B-&amp;gt;C-&amp;gt;D
+D(yes, right)-&amp;gt;ZX
+D(no)-&amp;gt;E-&amp;gt;F-&amp;gt;G
+G(yes, right)-&amp;gt;H-&amp;gt;J
+G(no)-&amp;gt;I-&amp;gt;J
+J-&amp;gt;KK-&amp;gt;K
+K(yes)-&amp;gt;L-&amp;gt;M
+K(no)-&amp;gt;O-&amp;gt;P
+M(yes)-&amp;gt;ZY
+M(no)-&amp;gt;N
+P(yes, right)-&amp;gt;ZY
+P(no, bottom)-&amp;gt;Q-&amp;gt;R-&amp;gt;S-&amp;gt;T(left)-&amp;gt;N
+N(right)-&amp;gt;ZX
+ZX-&amp;gt;ZZ
+ZY-&amp;gt;ZZ
+&lt;/textarea&gt;
+&lt;script&gt;
+    if (typeof($) === &quot;undefined&quot;) {
+        alert(&quot;include flowchart.html!&quot;);
+    } else {
+        $(function() {
+            let area = document.getElementById(&quot;area-4bf4aa5a-8664-4c5e-9842-a114a70a5692&quot;);
+            let ctx = area.value;
+        
+            chart = flowchart.parse(ctx);
+            chart.drawSVG(&quot;flowchart-canvas-4bf4aa5a-8664-4c5e-9842-a114a70a5692&quot;, {
+                'line-width': 2,
+                'maxWidth': 3,
+                'font-size': 11});
+            area.remove();
+
+            setTimeout(() =&gt; {
+                for(var x of document.querySelectorAll(&quot;div[id^=flowchart-canvas] svg&quot;)) {
+                    x.removeAttribute(&quot;height&quot;);
+                    x.removeAttribute(&quot;width&quot;);
+                }
+            }, 500)
+        });
+    }
+&lt;/script&gt;
+
+&lt;p&gt;&lt;em&gt;注：宏&lt;strong&gt;SDS_MAX_PREALLOC&lt;/strong&gt;定义位于&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:36&lt;/code&gt;，默认为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1024*1024&lt;/code&gt;，即1 MiB。本质上即新容量小于1 MiB时直接扩容为所需内存两倍，否则只增加1 MiB。&lt;/em&gt;&lt;/p&gt;
+
+&lt;h3 id=&quot;void-sdsincrlensds-s-int-incr&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void sdsIncrLen(sds s, int incr)&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;此函数主要是&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdsMakeRoomFor&lt;/code&gt;操作保证容量，再通过其他操作直接向&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;buf&lt;/code&gt;域写入内容后，重新调整&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域，并与新内容后增加终止符&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\0&lt;/code&gt;，保证&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域值与缓冲区内容一致。同时&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;incr&lt;/code&gt;可以为负数，达到 trim 操作的效果。典型用例如下：&lt;/p&gt;
+&lt;blockquote&gt;
+  &lt;p&gt;[sds.h:321] &lt;br /&gt;
+Usage example:
+Using sdsIncrLen() and sdsMakeRoomFor() it is possible to mount the following schema, to cat bytes coming from the kernel to the end of an sds string without copying into an intermediate buffer:&lt;/p&gt;
+
+  &lt;p&gt;oldlen = sdslen(s);
+s = sdsMakeRoomFor(s, BUFFER_SIZE);
+nread = read(fd, s+oldlen, BUFFER_SIZE);
+… check for nread &amp;lt;= 0 and handle it …
+sdsIncrLen(s, nread);&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;本函数实现逻辑与&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds.h:154#sdsinclen(sds, size_t)&lt;/code&gt;基本一致，只有几点不同：&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;设置长度前校验缓冲区空间足够增减，以&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;SDS_TYPE_5&lt;/code&gt;和&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;SDS_TYPE_8&lt;/code&gt;为例，其余类似：&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;table class=&quot;rouge-table&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;gutter gl&quot;&gt;&lt;pre class=&quot;lineno&quot;&gt;1
+2
+3
+4
+5
+6
+&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;c1&quot;&gt;//sds.c:338, SDS_TYPE_5&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;unsigned&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;oldlen&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;SDS_TYPE_5_LEN&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;flags&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;assert&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;incr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;oldlen&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;incr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;32&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;||&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;incr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;oldlen&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;unsigned&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;incr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)));&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;//sds.c:347, SDS_TYPE_8&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;assert&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;incr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sh&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;alloc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sh&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;len&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;incr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;||&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;incr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sh&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;len&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;unsigned&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;incr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)));&lt;/span&gt;
+&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;缓冲区内容后一位增加终止符&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\0&lt;/code&gt;。&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&quot;sds-sdsremovefreespacesds-s&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsRemoveFreeSpace(sds s)&lt;/code&gt;&lt;/h3&gt;
+&lt;blockquote&gt;
+  &lt;p&gt;[sds.h:249] &lt;br /&gt;
+Reallocate the sds string so that it has no free space at the end. The contained string remains not altered, but next concatenation operations will require a reallocation.
+After the call, the passed sds string is no longer valid and all the references must be substituted with the new pointer returned by the call.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;本函数为回收&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象缓冲区剩余空间，使缓冲区容量变为当前缓冲区内容长度加上结尾终止符。逻辑与&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdsMakeRoomFor&lt;/code&gt;基本一致，只有几点不同：&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;剩余空间不为0时重新分配对象内存，否则返回原对象地址；&lt;/li&gt;
+  &lt;li&gt;sds_type 不变时也要通过&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;realloc&lt;/code&gt;操作重新分配内存；&lt;/li&gt;
+  &lt;li&gt;新对象的&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域和&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;alloc&lt;/code&gt;域均为当前&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;域加1。&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&quot;size_t-sdsallocsizesds-s&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;size_t sdsAllocSize(sds s)&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;获取&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象背后&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr&lt;/code&gt;结构完整的大小，包括以下几部分：&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;对象头；&lt;/li&gt;
+  &lt;li&gt;缓冲区内容；&lt;/li&gt;
+  &lt;li&gt;未使用空间；&lt;/li&gt;
+  &lt;li&gt;结尾隐含的终止符。
+实现逻辑即&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;对象头长度+alloc域+1&lt;/code&gt;，如下源码所示：&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;table class=&quot;rouge-table&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;gutter gl&quot;&gt;&lt;pre class=&quot;lineno&quot;&gt;1
+2
+3
+4
+5
+&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;c1&quot;&gt;//sds.c:299#sdsAllocSize(sds)-&amp;gt;size_t&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;size_t&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;sdsAllocSize&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sds&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;s&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;size_t&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;alloc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sdsalloc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;s&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sdsHdrSize&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;s&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;])&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;alloc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;+&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h3 id=&quot;void-sdsallocptrsds-s&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void *sdsAllocPtr(sds s)&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;获取&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象背后&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdshdr&lt;/code&gt;的地址，效果类似宏函数&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;SDS_HDR&lt;/code&gt;，直接通过对象头获取对象头大小并偏移&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象指针获得。实现如源码所示：&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;table class=&quot;rouge-table&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;gutter gl&quot;&gt;&lt;pre class=&quot;lineno&quot;&gt;1
+2
+3
+4
+&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;c1&quot;&gt;//sds.c:306#sdsAllocPtr(sds)-&amp;gt;void *&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;sdsAllocPtr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sds&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;s&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;s&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sdsHdrSize&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;s&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]));&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h2 id=&quot;api清单&quot;&gt;API清单&lt;/h2&gt;
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象提供了众多操作函数，部分函数与 C 标准库字符串操作函数类似。下述表格列出 API 清单，并简单说明功能，API 顺序以头文件声明顺序为准。&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;注：调用返回值为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;的函数后，应使用返回值作为新字符串使用，原字符串不应再有任何读写操作。&lt;/em&gt;&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;函数声明&lt;/th&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;源码位置&lt;/th&gt;
+      &lt;th style=&quot;text-align: center&quot;&gt;功能简要说明&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsnewlen(const void *init, size_t initlen);&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:89&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;指定二进制内容创建&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsnew(const char *init);&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:154&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;由 C 风格字符串创建&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsempty(void);&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:149&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;创建空对象&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsdup(const sds s)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:160&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;复制字符串（深拷贝）&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void sdsfree(sds s)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:165&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;释放对象&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsgrowzero(sds s, size_t len)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:379&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;扩容字符串缓冲区至指定长度&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdscatlen(sds s, const void *t, size_t len)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:397&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;追加指定长度的二进制数据&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdscat(sds s, const char *t)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:412&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;追加 C 风格字符串&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdscatsds(sds s, const sds t)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:420&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;追加&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;对象&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdscpylen(sds s, const char *t, size_t len)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:426&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;替换为指定长度的字符串&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdscpy(sds s, const char *t)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:439&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;替换为 C 风格字符串&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdscatvprintf(sds s, const char *fmt, va_list ap)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:522&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;按照格式写字符串入缓冲区（依靠标准库宏&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;vsnprintf&lt;/code&gt;实现）&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdscatprintf(sds s, const char *fmt, ...)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:522&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;功能同&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdscatvprintf&lt;/code&gt;，GNU 扩展，增加&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;__attribute__((format(printf, 2, 3)))&lt;/code&gt;校验&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdscatfmt(sds s, char const *fmt, ...)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:600&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;功能同&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sdscatvprintf&lt;/code&gt;，未以来标准库，直接实现部分格式占位符的支持&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdstrim(sds s, const char *cset)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:704&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;从字符串左右两端去除指定的字符&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void sdsrange(sds s, ssize_t start, ssize_t end)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:735&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;指定范围截取字符串&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void sdsupdatelen(sds s)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:184&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;通过标准库函数&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;strlen&lt;/code&gt;计算字符串长度并重新设置&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void sdsclear(sds s)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:193&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;字符串首位置&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\0&lt;/code&gt;并设置长度为0&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;int sdscmp(const sds s1, const sds s2)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:788&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;比较两个字符串，相等条件为长度相同且内容一致&lt;br /&gt;（通过&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&amp;lt;string.h&amp;gt;#memcmp(const void *, const void *, size_t)-&amp;gt;int&lt;/code&gt;比较内容）&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds *sdssplitlen(const char *s, ssize_t len, const char *sep, int seplen, int *count);&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:816&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;以子串&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sep&lt;/code&gt;为分割符分隔字符串(C 风格字符串和&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;均可)，返回&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;数组和长度，以&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;len&lt;/code&gt;为原字符串长度保证二进制安全&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void sdsfreesplitres(sds *tokens, int count)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:867&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;释放字符串数组空间&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void sdstolower(sds s)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:764&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;字符串内英文字母变小写&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void sdstoupper(sds s)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:771&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;字符串内英文字母变大写&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsfromlonglong(long long value)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:514&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;整数转字符串&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdscatrepr(sds s, const char *p, size_t len)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:880&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;将字符串中不可打印字符转换并显示&lt;br /&gt;如&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\t&lt;/code&gt;转为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\\t&lt;/code&gt;，&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;U+000A&lt;/code&gt;转换为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\x0A&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds *sdssplitargs(const char *line, int *argc)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:955&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;通过空白分割符将字符串转换为 token 数组&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsmapchars(sds s, const char *from, const char *to, size_t setlen)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:1074&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;转换字符串中的字符&lt;br /&gt;如&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;from&lt;/code&gt;为 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;AB&lt;/code&gt;，&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;to&lt;/code&gt;为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CD&lt;/code&gt;时表示 字符串中 A 替换为 C，B 替换为 D&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsjoin(char **argv, int argc, char *sep)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:1090&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;将 C 风格字符串数组通过指定分割符合成一个字符串&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds sdsjoinsds(sds *argv, int argc, const char *sep, size_t seplen)&lt;/code&gt;&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;sds.c:1102&lt;/td&gt;
+      &lt;td style=&quot;text-align: center&quot;&gt;将&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sds&lt;/code&gt;数组通过指定分割符合成一个字符串&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;h1 id=&quot;参考&quot;&gt;参考&lt;/h1&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/antirez/sds&quot;&gt;antirez/sds&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/redis/redis/tree/5.0.10&quot;&gt;Redis源码（版本5.0.10）&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;http://shuyuan.hzmedia.com.cn/ebookdtl?id=11112416&quot;&gt;Redis设计与实现&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</content><author><name></name></author><category term="Redis" /><summary type="html">Redis 采用名为简单动态字符串（Simple Dynamic String，即 sds）的结构存储字符串或二进制数据。字符串是 Redis 中五大基础数据结构之一，也是 Redis 基础值类型容器。</summary></entry><entry><title type="html">Introduction</title><link href="/blog/redis/introduction" rel="alternate" type="text/html" title="Introduction" /><published>2021-02-16T00:00:00+00:00</published><updated>2021-02-16T00:00:00+00:00</updated><id>/blog/redis/introduction</id><content type="html" xml:base="/blog/redis/introduction">&lt;p&gt;Redis 源码阅读与分析。目标版本为5.0.10，即5.0最新的稳定版。6.0及以后的变更考虑以增补形式加入。&lt;/p&gt;
+
+&lt;h1 id=&quot;约定&quot;&gt;约定&lt;/h1&gt;
+&lt;ol&gt;
+  &lt;li&gt;Redis 源码内目录约定为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;redis/src&lt;/code&gt;，即&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;xxx.h&lt;/code&gt;默认指&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;redis/src/xxx.h&lt;/code&gt;；源码内其他文件以完整相对路径表示，如&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;redis/deps/hiredis/hiredis.h&lt;/code&gt;；系统头文件以尖括号表示，如&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&amp;lt;stdio.h&amp;gt;&lt;/code&gt;；其他外部文件会指明具体路径；&lt;/li&gt;
+  &lt;li&gt;阐述函数逻辑时以流程图为主，简单函数则说明作用，必要时辅以源码；&lt;/li&gt;
+  &lt;li&gt;引用文件内定义或代码时，使用格式&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;xxx.h:n#func(const int)-&amp;gt;int&lt;/code&gt;表示，含义为&lt;strong&gt;xxx.h文件中行号n的行为函数func，func有一个类型为const int的形参，返回值类型为int&lt;/strong&gt;，其中行号&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:n&lt;/code&gt;和函数结构&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;#func(const int)-&amp;gt;int&lt;/code&gt;均为可选，同时函数引用中返回值为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;void&lt;/code&gt;时省略&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;-&amp;gt;void&lt;/code&gt;；&lt;/li&gt;
+  &lt;li&gt;引用自源码中的说明会贴出原文，指明来源位置，例：
+    &lt;blockquote&gt;
+      &lt;p&gt;[sds.h:45]&lt;br /&gt;Note: sdshdr5 is never used, we just access the flags byte directly. However is here to document the layout of type 5 SDS strings.&lt;/p&gt;
+    &lt;/blockquote&gt;
+  &lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h1 id=&quot;名词定义&quot;&gt;名词定义&lt;/h1&gt;
+&lt;p&gt;后续行文会用到一些通过概念或符号，此处统一约定，后续直接使用。&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;&lt;strong&gt;C 风格字符串&lt;/strong&gt;：指以字符数组和 ACSII 码值0（即空字符）做终止符的字符串；&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;size_t&lt;/strong&gt;：C 标准库中用来表示长度的无符号整数类型，一般为&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;unsigned int&lt;/code&gt;或&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;unsigned long&lt;/code&gt;，与系统实现有关，Redis亦用此表示长度；&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;ssize_t&lt;/strong&gt;：即&lt;strong&gt;signed size_t&lt;/strong&gt;，值为非负数时含义与&lt;em&gt;size_t&lt;/em&gt;相同，值为负的时含义以各自实现为准；&lt;/li&gt;
+  &lt;li&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h1 id=&quot;参考资料&quot;&gt;参考资料&lt;/h1&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/redis/redis/tree/5.0.10&quot;&gt;Redis源码（版本5.0.10）&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;http://shuyuan.hzmedia.com.cn/ebookdtl?id=11112416&quot;&gt;Redis设计与实现&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://book.douban.com/subject/26612779&quot;&gt;Redis实战&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</content><author><name></name></author><category term="Redis" /><summary type="html">Redis 源码阅读与分析。目标版本为5.0.10，即5.0最新的稳定版。6.0及以后的变更考虑以增补形式加入。</summary></entry></feed>

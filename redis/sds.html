@@ -1,0 +1,991 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.22.0 by Michael Rose
+  Copyright 2013-2020 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Simple Dynamic String - wqhyw’s blog</title>
+<meta name="description" content="Redis 采用名为简单动态字符串（Simple Dynamic String，即 sds）的结构存储字符串或二进制数据。字符串是 Redis 中五大基础数据结构之一，也是 Redis 基础值类型容器。">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="wqhyw's blog">
+<meta property="og:title" content="Simple Dynamic String">
+<meta property="og:url" content="/blog/redis/sds">
+
+
+  <meta property="og:description" content="Redis 采用名为简单动态字符串（Simple Dynamic String，即 sds）的结构存储字符串或二进制数据。字符串是 Redis 中五大基础数据结构之一，也是 Redis 基础值类型容器。">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2021-02-16T00:00:00+00:00">
+
+
+
+
+
+
+<link rel="canonical" href="/blog/redis/sds">
+
+
+
+
+<script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    
+      "@type": "Person",
+      "name": null,
+      "url": "/blog/"
+    
+  }
+</script>
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/blog/feed.xml" type="application/atom+xml" rel="alternate" title="wqhyw's blog Feed">
+
+
+<!-- https://t.co/dKP3o1e -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/blog/assets/css/main.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css">
+
+<!--[if IE]>
+  <style>
+    /* old IE unsupported flexbox fixes */
+    .greedy-nav .site-title {
+      padding-right: 3em;
+    }
+    .greedy-nav button {
+      position: absolute;
+      top: 0;
+      right: 0;
+      height: 100%;
+    }
+  </style>
+<![endif]-->
+
+
+    <link rel="shortcut icon" href="/blog/assets/img/favicon.ico">
+
+  </head>
+
+  <body class="layout--single wide">
+    <nav class="skip-links">
+  <h2 class="screen-reader-text">Skip links</h2>
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    <!--[if lt IE 9]>
+<div class="notice--danger align-center" style="margin: 0;">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience.</div>
+<![endif]-->
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/blog/">
+          wqhyw's blog
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a href="/blog/categories">Categories</a>
+            </li></ul>
+        
+        <button class="search__toggle" type="button">
+          <span class="visually-hidden">Toggle search</span>
+          <svg class="icon" width="16" height="16" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15.99 16">
+            <path d="M15.5,13.12L13.19,10.8a1.69,1.69,0,0,0-1.28-.55l-0.06-.06A6.5,6.5,0,0,0,5.77,0,6.5,6.5,0,0,0,2.46,11.59a6.47,6.47,0,0,0,7.74.26l0.05,0.05a1.65,1.65,0,0,0,.5,1.24l2.38,2.38A1.68,1.68,0,0,0,15.5,13.12ZM6.4,2A4.41,4.41,0,1,1,2,6.4,4.43,4.43,0,0,1,6.4,2Z" transform="translate(-.01)"></path>
+          </svg>
+        </button>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/blog/" itemprop="item"><span itemprop="name">Home</span></a>
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/blog/redis" itemprop="item"><span itemprop="name">Redis</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">Simple Dynamic String</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+  <div class="sidebar sticky">
+  
+  
+    
+      
+      
+      
+      
+    
+    
+      
+
+<nav class="nav__list">
+  
+  <input id="ac-toc" name="accordion-toc" type="checkbox" />
+  <label for="ac-toc">Toggle Menu</label>
+  <ul class="nav__items">
+    
+      <li>
+        
+          <a href="/blog/redis/introduction"><span class="nav__sub-title">序言</span></a>
+        
+
+        
+      </li>
+    
+      <li>
+        
+          <a href="/blog/redis/sds"><span class="nav__sub-title">基础数据结构和对象系统</span></a>
+        
+
+        
+        <ul>
+          
+            <li><a href="/blog/redis/sds" class="active">简单动态字符串</a></li>
+          
+            <li><a href="/blog/redis/adlist">双向链表</a></li>
+          
+            <li><a href="/blog/redis/hash-table">字典（哈希表）</a></li>
+          
+        </ul>
+        
+      </li>
+    
+  </ul>
+</nav>
+
+    
+  
+  </div>
+
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Simple Dynamic String">
+    <meta itemprop="description" content="Redis 采用名为简单动态字符串（Simple Dynamic String，即 sds）的结构存储字符串或二进制数据。字符串是 Redis 中五大基础数据结构之一，也是 Redis 基础值类型容器。">
+    <meta itemprop="datePublished" content="2021-02-16T00:00:00+00:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">Simple Dynamic String
+</h1>
+          
+
+  <p class="page__meta">
+    
+      
+      <span class="page__meta-date">
+        <i class="far fa-calendar-alt" aria-hidden="true"></i>
+        <time datetime="2021-02-16T00:00:00+00:00">February 16, 2021</time>
+      </span>
+    
+
+    <span class="page__meta-sep"></span>
+
+    
+      
+      
+
+      <span class="page__meta-readtime">
+        <i class="far fa-clock" aria-hidden="true"></i>
+        
+          4 minute read
+        
+      </span>
+    
+  </p>
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+          <aside class="sidebar__right ">
+            <nav class="toc">
+              <header><h4 class="nav__title"><i class="fas fa-align-justify"></i> 目录</h4></header>
+              <ul class="toc__menu"><li><a href="#概述">概述</a></li><li><a href="#操作">操作</a><ul><li><a href="#内存管理">内存管理</a></li><li><a href="#sds-对象的定义与-sdshdr-结构的转换">sds 对象的定义与 sdshdr 结构的转换</a></li><li><a href="#内联函数">内联函数</a></li><li><a href="#sds-对象的创建">sds 对象的创建</a><ul><li><a href="#指定内容和长度创建sds-sdsnewlenconst-void-init-size_t-initlen">指定内容和长度创建sds sdsnewlen(const void *init, size_t initlen)</a></li><li><a href="#由-c-风格字符串创建sds-sdsnewconst-char-init">由 C 风格字符串创建sds sdsnew(const char *init)</a></li><li><a href="#深拷贝其他-sds-对象sds-sdsdupconst-sds-s">深拷贝其他 sds 对象sds sdsdup(const sds s)</a></li><li><a href="#创建空对象sds-sdsemptyvoid">创建空对象sds sdsempty(void)</a></li></ul></li><li><a href="#sds-对象的释放">sds 对象的释放</a></li><li><a href="#sds-对象低层-api">sds 对象低层 API</a><ul><li><a href="#sds-sdsmakeroomforsds-s-size_t-addlen">sds sdsMakeRoomFor(sds s, size_t addlen)</a></li><li><a href="#void-sdsincrlensds-s-int-incr">void sdsIncrLen(sds s, int incr)</a></li><li><a href="#sds-sdsremovefreespacesds-s">sds sdsRemoveFreeSpace(sds s)</a></li><li><a href="#size_t-sdsallocsizesds-s">size_t sdsAllocSize(sds s)</a></li><li><a href="#void-sdsallocptrsds-s">void *sdsAllocPtr(sds s)</a></li></ul></li><li><a href="#api清单">API清单</a></li></ul></li><li><a href="#参考">参考</a></li></ul>
+
+            </nav>
+          </aside>
+        
+        <p>Redis 采用名为<strong>简单动态字符串（Simple Dynamic String，即 sds）</strong>的结构存储字符串或二进制数据。字符串是 Redis 中五大基础数据结构之一，也是 Redis 基础值类型容器。</p>
+
+<script src="/blog/assets/js/raphael.min.js"></script>
+
+<script src="/blog/assets/js/jquery.min.js"></script>
+
+<script src="/blog/assets/js/flowchart.min.js"></script>
+
+<script>window.included = true</script>
+
+<h1 id="概述">概述</h1>
+
+<blockquote>
+  <ul>
+    <li>sds.h: 结构定义、操作函数声明与内联函数定义等</li>
+    <li>sdsalloc.h: 声明内存分配与回收函数的宏定义</li>
+    <li>sds.c: 实现</li>
+  </ul>
+</blockquote>
+
+<p>在 Redis 中，键一定是<code class="language-plaintext highlighter-rouge">sds</code>对象，<code class="language-plaintext highlighter-rouge">sds</code>对象也是值的基本容器，C 风格的字符串仅用于字面值。<code class="language-plaintext highlighter-rouge">sds</code>对象依靠<code class="language-plaintext highlighter-rouge">sdshdr</code>结构实现，其定义位于<code class="language-plaintext highlighter-rouge">sds.h</code>中，其结构以<code class="language-plaintext highlighter-rouge">sdshdr5</code>和<code class="language-plaintext highlighter-rouge">sdshdr8</code>（其余结构仅header中表示长度的类型不一样）为例可以表示为下图：</p>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">sdshdr5</code>
+<a href="/blog/assets/img/sdshdr5.png"><img src="/blog/assets/img/sdshdr5.png" alt="sdshdr5" /></a></p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">sdshdr8</code>
+<a href="/blog/assets/img/sdshdr8.png"><img src="/blog/assets/img/sdshdr8.png" alt="sdshdr8" /></a></p>
+  </li>
+</ul>
+
+<p><code class="language-plaintext highlighter-rouge">sdshdr</code>结构有以下特点：</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">flag</code>域的低三位表示结构体类型（特别的，高五位在<code class="language-plaintext highlighter-rouge">sdshdr5</code>中表示长度，其余类型未使用），类型与标志位的定义如下：</li>
+</ul>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><table class="rouge-table"><tbody><tr><td class="gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+</pre></td><td class="code"><pre><span class="c1">//sds.h:76</span>
+<span class="cp">#define SDS_TYPE_5  0 //0b000
+#define SDS_TYPE_8  1 //0b001
+#define SDS_TYPE_16 2 //0b010
+#define SDS_TYPE_32 3 //0b011
+#define SDS_TYPE_64 4 //0b100
+#define SDS_TYPE_MASK 7 //0b111
+#define SDS_TYPE_BITS 3</span>
+</pre></td></tr></tbody></table></code></pre></figure>
+
+<ul>
+  <li>柔性数组<code class="language-plaintext highlighter-rouge">buf</code>域的地址作为<code class="language-plaintext highlighter-rouge">sds</code>对象地址，内存上与对象头连续，同时相关函数保证<code class="language-plaintext highlighter-rouge">buf</code>的最后一位一定有<code class="language-plaintext highlighter-rouge">\0</code>作为终止符，因而可以当做 C 风格字符串使用，可以复用 C 标准库中众多的字符串函数；</li>
+  <li><code class="language-plaintext highlighter-rouge">len</code>域表示<code class="language-plaintext highlighter-rouge">buf</code>数组中最后一个<code class="language-plaintext highlighter-rouge">\0</code>前面的内容长度；</li>
+  <li><code class="language-plaintext highlighter-rouge">alloc</code>域表示<code class="language-plaintext highlighter-rouge">buf</code>数组长度，不包括结尾默认自带的<code class="language-plaintext highlighter-rouge">\0</code>，所以<code class="language-plaintext highlighter-rouge">alloc - len = free space</code>；</li>
+  <li><code class="language-plaintext highlighter-rouge">len</code>域和<code class="language-plaintext highlighter-rouge">alloc</code>域使得可以以时间复杂度 O(1) 获取长度和剩余空间等信息，不以<code class="language-plaintext highlighter-rouge">\0</code>为计算标准，保证了二进制安全；</li>
+  <li>字符串内容有变动时，优先在原对象的缓冲区做拷贝，同时必要时才扩容，大大减少了内存的申请频率；</li>
+  <li>不同的数据长度使用不同的<code class="language-plaintext highlighter-rouge">sdshdr</code>结构，更精准的按需使用内存。</li>
+</ul>
+
+<h1 id="操作">操作</h1>
+<h2 id="内存管理">内存管理</h2>
+<p><code class="language-plaintext highlighter-rouge">sds</code>使用下列函数管理内存</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">sds.h:266#sds_malloc(size_t)-&gt;void *</code></li>
+  <li><code class="language-plaintext highlighter-rouge">void *sds_realloc(void *ptr, size_t size)</code></li>
+  <li><code class="language-plaintext highlighter-rouge">void sds_free(void *ptr)</code>
+上述函数均委托位于<code class="language-plaintext highlighter-rouge">sdsalloc.h</code>中的宏函数实现内存管理，又委托<code class="language-plaintext highlighter-rouge">zmalloc.h</code>中的具体定义实现。底层可以为<code class="language-plaintext highlighter-rouge">tcmalloc</code>、<code class="language-plaintext highlighter-rouge">jemalloc</code>或标准库实现，通过<code class="language-plaintext highlighter-rouge">USE_TCMALLOC</code>、<code class="language-plaintext highlighter-rouge">USE_JEMALLOC</code>、<code class="language-plaintext highlighter-rouge">__APPLE__</code>和<code class="language-plaintext highlighter-rouge">__GLIBC__</code>等宏开关控制，具体分析参见章节<a href="/blog/memory_management">Redis 内存管理</a>。</li>
+</ul>
+
+<h2 id="sds-对象的定义与-sdshdr-结构的转换">sds 对象的定义与 sdshdr 结构的转换</h2>
+<p><code class="language-plaintext highlighter-rouge">sds</code>对象类型即<code class="language-plaintext highlighter-rouge">char *</code>，定义如下：</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><table class="rouge-table"><tbody><tr><td class="gutter gl"><pre class="lineno">1
+2
+</pre></td><td class="code"><pre><span class="c1">//sds.h:43</span>
+<span class="k">typedef</span> <span class="kt">char</span> <span class="o">*</span><span class="n">sds</span><span class="p">;</span>
+</pre></td></tr></tbody></table></code></pre></figure>
+
+<p>一般的，<code class="language-plaintext highlighter-rouge">sds</code>对象指向<code class="language-plaintext highlighter-rouge">sdshdr</code>结构的<code class="language-plaintext highlighter-rouge">buf</code>域，因此可以通过下列操作转换为<code class="language-plaintext highlighter-rouge">sdshdr</code>结构指针：</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><table class="rouge-table"><tbody><tr><td class="gutter gl"><pre class="lineno">1
+2
+3
+</pre></td><td class="code"><pre><span class="c1">//sds.h:83</span>
+<span class="cp">#define SDS_HDR_VAR(T,s) struct sdshdr##T *sh = (void*)((s)-(sizeof(struct sdshdr##T)));
+#define SDS_HDR(T,s) ((struct sdshdr##T *)((s)-(sizeof(struct sdshdr##T))))</span>
+</pre></td></tr></tbody></table></code></pre></figure>
+
+<p>即将<code class="language-plaintext highlighter-rouge">sds</code>对象往前移动<code class="language-plaintext highlighter-rouge">sdshdr</code>的结构体大小即可，如下图示：
+<a href="/blog/assets/img/sds_sdshdr_transform.png"><img src="/blog/assets/img/sds_sdshdr_transform.png" alt="sds_sdshdr_transform" /></a>
+其中<code class="language-plaintext highlighter-rouge">T</code>表示所需<code class="language-plaintext highlighter-rouge">sdshdr</code>结构的类型，由需要的内容长度界定（参见<code class="language-plaintext highlighter-rouge">sds.c:60#sdsReqType(size_t)-&gt;char</code>）关系如下表：</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center">内容长度</th>
+      <th style="text-align: center">sds_type</th>
+      <th style="text-align: center">sdshdr 结构</th>
+      <th style="text-align: center">说明</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center">[0, 32)</td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">SDS_TYPE_5</code></td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sdshdr5</code></td>
+      <td style="text-align: center">32即<code class="language-plaintext highlighter-rouge">1&lt;&lt;5</code>，存入<code class="language-plaintext highlighter-rouge">flag</code>域高五位。<br />实际使用中不使用此结构，因为<code class="language-plaintext highlighter-rouge">sdshdr5</code>没有<code class="language-plaintext highlighter-rouge">alloc</code>域，不能指示剩余空间</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">[32, 256)</td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">SDS_TYPE_8</code></td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sdshdr8</code></td>
+      <td style="text-align: center">256即<code class="language-plaintext highlighter-rouge">1&lt;&lt;8</code>，所以 header 中长度域类型为<code class="language-plaintext highlighter-rouge">uint8</code></td>
+    </tr>
+    <tr>
+      <td style="text-align: center">[256, 65536)</td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">SDS_TYPE_16</code></td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sdshdr16</code></td>
+      <td style="text-align: center">65536即<code class="language-plaintext highlighter-rouge">1&lt;&lt;16</code>，所以 header 中长度域类型为<code class="language-plaintext highlighter-rouge">uint16</code></td>
+    </tr>
+    <tr>
+      <td style="text-align: center">[65536, 4294967296)</td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">SDS_TYPE_32</code></td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sdshdr32</code></td>
+      <td style="text-align: center">4294967296即<code class="language-plaintext highlighter-rouge">1&lt;&lt;32</code>，所以 header 中长度域类型为<code class="language-plaintext highlighter-rouge">uint32</code>，特别的，32位系统中最大的类型即为此，由<code class="language-plaintext highlighter-rouge">LONG_MAX == LLONG_MAX</code>判断</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">大于4294967296</td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">SDS_TYPE_64</code></td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sdshdr64</code></td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">unsigned long long</code>为64位系统中最大整数，header 中长度域类型为<code class="language-plaintext highlighter-rouge">uint64</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="内联函数">内联函数</h2>
+<p><code class="language-plaintext highlighter-rouge">sds</code>对象的对象头操作是以内联函数的形式实现，这些内联函数依赖<code class="language-plaintext highlighter-rouge">sds</code>对象和<code class="language-plaintext highlighter-rouge">sdshdr</code>结构体的转换实现操作，也是<code class="language-plaintext highlighter-rouge">sds</code>对象其他操作不可或缺的部分。</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center">函数</th>
+      <th style="text-align: center">说明</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds.h:87#sdslen(const sds)-&gt;size_t</code></td>
+      <td style="text-align: center">获取对象头中<code class="language-plaintext highlighter-rouge">len</code>域</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds.h:104#sdsavail(const sds)-&gt;size_t</code></td>
+      <td style="text-align: center">获取对象头中剩余空间，即<code class="language-plaintext highlighter-rouge">alloc - len</code></td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds.h:130#sdssetlen(sds, size_t)</code></td>
+      <td style="text-align: center">设置对象头<code class="language-plaintext highlighter-rouge">len</code>域<br />（特别的，<code class="language-plaintext highlighter-rouge">sdshdr5</code>的长度通过位运算设置<code class="language-plaintext highlighter-rouge">flag</code>域的高5位，同时此处对<code class="language-plaintext highlighter-rouge">len</code>域是否满足<code class="language-plaintext highlighter-rouge">alloc</code>域限制并未做校验）</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds.h:154#sdsinclen(sds, size_t)</code></td>
+      <td style="text-align: center">指定长度增加<code class="language-plaintext highlighter-rouge">len</code>域<br />（此处对<code class="language-plaintext highlighter-rouge">len</code>域是否满足<code class="language-plaintext highlighter-rouge">alloc</code>域限制并未做校验）</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds.h:180#sdsalloc(const sds)-&gt;size_t</code></td>
+      <td style="text-align: center">获取对象头中<code class="language-plaintext highlighter-rouge">alloc</code>域</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds.h:197#sdssetalloc(sds, size_t)</code></td>
+      <td style="text-align: center">设置对象头<code class="language-plaintext highlighter-rouge">alloc</code>域</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds.c:44#sdsHdrSize(char)-&gt;size_t</code></td>
+      <td style="text-align: center">根据 sds_type 获取对象头长度</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds.c:60#sdsReqType(size_t)-&gt;char</code></td>
+      <td style="text-align: center">根据内容长度获取合适的 sds_type，参见<a href="#sds 对象的定义与 sdshdr 结构的转换">sds 对象的定义与 sdshdr 结构的转换</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="sds-对象的创建">sds 对象的创建</h2>
+<p><code class="language-plaintext highlighter-rouge">sds</code>对象创建几种方式：指定内容和长度创建、由 C 风格字符串创建、由深拷贝其他<code class="language-plaintext highlighter-rouge">sds</code>对象和创建空对象，后三种创建方式通过委托第一种方式实现。</p>
+
+<h3 id="指定内容和长度创建sds-sdsnewlenconst-void-init-size_t-initlen">指定内容和长度创建<code class="language-plaintext highlighter-rouge">sds sdsnewlen(const void *init, size_t initlen)</code></h3>
+<p>函数声明位于<code class="language-plaintext highlighter-rouge">sds.h:217</code>，函数实现位于<code class="language-plaintext highlighter-rouge">sds.c:89</code>，所有创建操作依赖此。实现逻辑如下图示：</p>
+
+<div id="flowchart-canvas-65a1d77e-aeb5-49aa-b5a1-aef57819df27"></div>
+<textarea id="area-65a1d77e-aeb5-49aa-b5a1-aef57819df27" style="display:none;">
+A=&gt;start: START
+B=&gt;operation: 由initlen获取sds_type
+C=&gt;condition: sys_type为SDS_TYPE_5
+D=&gt;operation: 使用sds_type指定为SDS_TYPE_8
+E=&gt;operation: 由sds_type获取对象头大小至hdrlen
+F=&gt;operation: 分配大小为hdrlen+initlen+1的内存空间至sh
+G=&gt;condition: init内容为SDS_NOINIT
+H=&gt;operation: init指为NULL
+I=&gt;condition: init为空
+J=&gt;operation: 以0填充sh内容
+K=&gt;condition: sh为NULL
+L=&gt;operation: 获取buf域地址和flag域地址
+M=&gt;operation: 设置len域和alloc域为initlen
+N=&gt;operation: 设置flag域为sds_type
+O=&gt;condition: initlen&gt;0且init不为NULL
+P=&gt;operation: init内容copy至buf域中
+Q=&gt;operation: 设置buf域最后一位为\0
+ZX=&gt;operation: 返回NULL
+ZY=&gt;operation: 返回buf域地址
+ZZ=&gt;end: END
+
+A-&gt;B-&gt;C
+C(yes)-&gt;D-&gt;E
+C(no)-&gt;E-&gt;F-&gt;G
+G(yes)-&gt;H-&gt;L
+G(no)-&gt;I
+I(yes)-&gt;J-&gt;L
+I(no)-&gt;K
+K(yes)-&gt;ZX
+K(no)-&gt;L
+L-&gt;M-&gt;N-&gt;O
+O(yes)-&gt;P-&gt;Q
+O(no)-&gt;Q
+Q-&gt;ZY-&gt;ZZ
+ZX-&gt;ZZ
+
+</textarea>
+<script>
+    if (typeof($) === "undefined") {
+        alert("include flowchart.html!");
+    } else {
+        $(function() {
+            let area = document.getElementById("area-65a1d77e-aeb5-49aa-b5a1-aef57819df27");
+            let ctx = area.value;
+        
+            chart = flowchart.parse(ctx);
+            chart.drawSVG("flowchart-canvas-65a1d77e-aeb5-49aa-b5a1-aef57819df27", {
+                'line-width': 2,
+                'maxWidth': 3,
+                'font-size': 11});
+            area.remove();
+
+            setTimeout(() => {
+                for(var x of document.querySelectorAll("div[id^=flowchart-canvas] svg")) {
+                    x.removeAttribute("height");
+                    x.removeAttribute("width");
+                }
+            }, 500)
+        });
+    }
+</script>
+
+<h3 id="由-c-风格字符串创建sds-sdsnewconst-char-init">由 C 风格字符串创建<code class="language-plaintext highlighter-rouge">sds sdsnew(const char *init)</code></h3>
+<p>函数声明位于<code class="language-plaintext highlighter-rouge">sds.h:218</code>，函数实现位于<code class="language-plaintext highlighter-rouge">sds.c:154</code>。通过<code class="language-plaintext highlighter-rouge">&lt;string.h&gt;#strlen(const char *)-&gt;size_t</code>获取字符串长度（<code class="language-plaintext highlighter-rouge">NULL</code>则长度为0），委托<code class="language-plaintext highlighter-rouge">sdsnewlen</code>实现创建。</p>
+
+<h3 id="深拷贝其他-sds-对象sds-sdsdupconst-sds-s">深拷贝其他 sds 对象<code class="language-plaintext highlighter-rouge">sds sdsdup(const sds s)</code></h3>
+<p>函数声明位于<code class="language-plaintext highlighter-rouge">sds.h:221</code>，函数实现位于<code class="language-plaintext highlighter-rouge">sds.c:169</code>。通过<code class="language-plaintext highlighter-rouge">sds.h:87#sdslen(const sds)-&gt;size_t</code>获取字符串长度，委托<code class="language-plaintext highlighter-rouge">sdsnewlen</code>实现创建。</p>
+
+<h3 id="创建空对象sds-sdsemptyvoid">创建空对象<code class="language-plaintext highlighter-rouge">sds sdsempty(void)</code></h3>
+<p>函数声明位于<code class="language-plaintext highlighter-rouge">sds.h:219</code>，函数实现位于<code class="language-plaintext highlighter-rouge">sds.c:149</code>。指定空字符串字面值<code class="language-plaintext highlighter-rouge">""</code>和长度0委托<code class="language-plaintext highlighter-rouge">sdsnewlen</code>实现创建。</p>
+
+<h2 id="sds-对象的释放">sds 对象的释放</h2>
+<p>sds 对象主要通过<code class="language-plaintext highlighter-rouge">sds.h:268#sds_free(void *)</code>释放内存空间，最终委托 Redis 内存管理中的 <code class="language-plaintext highlighter-rouge">zfree</code>函数实现，也可以直接调用<code class="language-plaintext highlighter-rouge">zfree</code>释放内存。详细内容参见章节<a href="/blog/memory_management">Redis 内存管理</a>。</p>
+
+<h2 id="sds-对象低层-api">sds 对象低层 API</h2>
+<p>Redis 暴露出来了一些<code class="language-plaintext highlighter-rouge">sds</code>对象的底层 API，例如分配空间保证缓冲区不溢出等。<code class="language-plaintext highlighter-rouge">sds</code>的 API 实现也或多或少依赖这些函数。</p>
+
+<h3 id="sds-sdsmakeroomforsds-s-size_t-addlen"><code class="language-plaintext highlighter-rouge">sds sdsMakeRoomFor(sds s, size_t addlen)</code></h3>
+<blockquote>
+  <p>[sds.c:198]<br />
+Enlarge the free space at the end of the sds string so that the caller is sure that after calling this function can overwrite up to addlen bytes after the end of the string, plus one more byte for nul term.
+Note: this does not change the <em>length</em> of the sds string as returned by sdslen(), but only the free buffer space we have.</p>
+</blockquote>
+
+<p>此函数主要作用是在<code class="language-plaintext highlighter-rouge">buf</code>域后增加内容时，剩余空间不足以分配<code class="language-plaintext highlighter-rouge">addlen</code>时扩充额外空间（并不改变缓冲区已有内容，<code class="language-plaintext highlighter-rouge">len</code>域不变），确保缓冲区不溢出。所有往<code class="language-plaintext highlighter-rouge">sds</code>对象追加内容的操作前，都应该调用此函数。功能逻辑如图示：</p>
+
+<div id="flowchart-canvas-4bf4aa5a-8664-4c5e-9842-a114a70a5692"></div>
+<textarea id="area-4bf4aa5a-8664-4c5e-9842-a114a70a5692" style="display:none;">
+A=&gt;start: START
+B=&gt;operation: 获取缓冲区当前剩余空间avail
+C=&gt;operation: 获取当前sds_type
+D=&gt;condition: avail&gt;=add_len
+E=&gt;operation: 获取当前缓冲区内容长度len
+F=&gt;operation: newlen=len+addlen
+G=&gt;condition: newlen&lt;SDS_MAX_PREALLOC
+H=&gt;operation: newlen*=2 即申请与内容相同的额外空间
+I=&gt;operation: newlen+=SDS_MAX_PREALLOC 即只多申请1MiB的额外空间
+J=&gt;operation: 根据newlen计算新sds_type
+KK=&gt;operation: 根据sds_type计算对象头长度hdrlen
+K=&gt;condition: sds_type不变
+L=&gt;operation: 调用realloc扩容缓冲区大小至 hdrlen+newlen+1
+M=&gt;condition: 扩容结果为NULL
+N=&gt;operation: 置alloc域为newlen
+O=&gt;operation: 调用malloc申请新空间大小为 hdrlen+newlen+1
+P=&gt;condition: 申请新空间为空
+Q=&gt;operation: 拷贝原字符串至新地址
+R=&gt;operation: 释放原sds对象
+S=&gt;operation: 设置sds_type至新对象flag域
+T=&gt;operation: 设置len至新对象len域
+ZX=&gt;operation: 返回原sds对象地址
+ZY=&gt;operation: 返回NULL
+ZZ=&gt;end: END
+
+A-&gt;B-&gt;C-&gt;D
+D(yes, right)-&gt;ZX
+D(no)-&gt;E-&gt;F-&gt;G
+G(yes, right)-&gt;H-&gt;J
+G(no)-&gt;I-&gt;J
+J-&gt;KK-&gt;K
+K(yes)-&gt;L-&gt;M
+K(no)-&gt;O-&gt;P
+M(yes)-&gt;ZY
+M(no)-&gt;N
+P(yes, right)-&gt;ZY
+P(no, bottom)-&gt;Q-&gt;R-&gt;S-&gt;T(left)-&gt;N
+N(right)-&gt;ZX
+ZX-&gt;ZZ
+ZY-&gt;ZZ
+</textarea>
+<script>
+    if (typeof($) === "undefined") {
+        alert("include flowchart.html!");
+    } else {
+        $(function() {
+            let area = document.getElementById("area-4bf4aa5a-8664-4c5e-9842-a114a70a5692");
+            let ctx = area.value;
+        
+            chart = flowchart.parse(ctx);
+            chart.drawSVG("flowchart-canvas-4bf4aa5a-8664-4c5e-9842-a114a70a5692", {
+                'line-width': 2,
+                'maxWidth': 3,
+                'font-size': 11});
+            area.remove();
+
+            setTimeout(() => {
+                for(var x of document.querySelectorAll("div[id^=flowchart-canvas] svg")) {
+                    x.removeAttribute("height");
+                    x.removeAttribute("width");
+                }
+            }, 500)
+        });
+    }
+</script>
+
+<p><em>注：宏<strong>SDS_MAX_PREALLOC</strong>定义位于<code class="language-plaintext highlighter-rouge">sds.h:36</code>，默认为<code class="language-plaintext highlighter-rouge">1024*1024</code>，即1 MiB。本质上即新容量小于1 MiB时直接扩容为所需内存两倍，否则只增加1 MiB。</em></p>
+
+<h3 id="void-sdsincrlensds-s-int-incr"><code class="language-plaintext highlighter-rouge">void sdsIncrLen(sds s, int incr)</code></h3>
+<p>此函数主要是<code class="language-plaintext highlighter-rouge">sdsMakeRoomFor</code>操作保证容量，再通过其他操作直接向<code class="language-plaintext highlighter-rouge">buf</code>域写入内容后，重新调整<code class="language-plaintext highlighter-rouge">len</code>域，并与新内容后增加终止符<code class="language-plaintext highlighter-rouge">\0</code>，保证<code class="language-plaintext highlighter-rouge">len</code>域值与缓冲区内容一致。同时<code class="language-plaintext highlighter-rouge">incr</code>可以为负数，达到 trim 操作的效果。典型用例如下：</p>
+<blockquote>
+  <p>[sds.h:321] <br />
+Usage example:
+Using sdsIncrLen() and sdsMakeRoomFor() it is possible to mount the following schema, to cat bytes coming from the kernel to the end of an sds string without copying into an intermediate buffer:</p>
+
+  <p>oldlen = sdslen(s);
+s = sdsMakeRoomFor(s, BUFFER_SIZE);
+nread = read(fd, s+oldlen, BUFFER_SIZE);
+… check for nread &lt;= 0 and handle it …
+sdsIncrLen(s, nread);</p>
+</blockquote>
+
+<p>本函数实现逻辑与<code class="language-plaintext highlighter-rouge">sds.h:154#sdsinclen(sds, size_t)</code>基本一致，只有几点不同：</p>
+
+<ol>
+  <li>设置长度前校验缓冲区空间足够增减，以<code class="language-plaintext highlighter-rouge">SDS_TYPE_5</code>和<code class="language-plaintext highlighter-rouge">SDS_TYPE_8</code>为例，其余类似：</li>
+</ol>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><table class="rouge-table"><tbody><tr><td class="gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+</pre></td><td class="code"><pre><span class="c1">//sds.c:338, SDS_TYPE_5</span>
+<span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">oldlen</span> <span class="o">=</span> <span class="n">SDS_TYPE_5_LEN</span><span class="p">(</span><span class="n">flags</span><span class="p">);</span>
+<span class="n">assert</span><span class="p">((</span><span class="n">incr</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">oldlen</span><span class="o">+</span><span class="n">incr</span> <span class="o">&lt;</span> <span class="mi">32</span><span class="p">)</span> <span class="o">||</span> <span class="p">(</span><span class="n">incr</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">oldlen</span> <span class="o">&gt;=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="p">)(</span><span class="o">-</span><span class="n">incr</span><span class="p">)));</span>
+
+<span class="c1">//sds.c:347, SDS_TYPE_8</span>
+<span class="n">assert</span><span class="p">((</span><span class="n">incr</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">sh</span><span class="o">-&gt;</span><span class="n">alloc</span><span class="o">-</span><span class="n">sh</span><span class="o">-&gt;</span><span class="n">len</span> <span class="o">&gt;=</span> <span class="n">incr</span><span class="p">)</span> <span class="o">||</span> <span class="p">(</span><span class="n">incr</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">sh</span><span class="o">-&gt;</span><span class="n">len</span> <span class="o">&gt;=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="p">)(</span><span class="o">-</span><span class="n">incr</span><span class="p">)));</span>
+</pre></td></tr></tbody></table></code></pre></figure>
+
+<ol>
+  <li>缓冲区内容后一位增加终止符<code class="language-plaintext highlighter-rouge">\0</code>。</li>
+</ol>
+
+<h3 id="sds-sdsremovefreespacesds-s"><code class="language-plaintext highlighter-rouge">sds sdsRemoveFreeSpace(sds s)</code></h3>
+<blockquote>
+  <p>[sds.h:249] <br />
+Reallocate the sds string so that it has no free space at the end. The contained string remains not altered, but next concatenation operations will require a reallocation.
+After the call, the passed sds string is no longer valid and all the references must be substituted with the new pointer returned by the call.</p>
+</blockquote>
+
+<p>本函数为回收<code class="language-plaintext highlighter-rouge">sds</code>对象缓冲区剩余空间，使缓冲区容量变为当前缓冲区内容长度加上结尾终止符。逻辑与<code class="language-plaintext highlighter-rouge">sdsMakeRoomFor</code>基本一致，只有几点不同：</p>
+<ol>
+  <li>剩余空间不为0时重新分配对象内存，否则返回原对象地址；</li>
+  <li>sds_type 不变时也要通过<code class="language-plaintext highlighter-rouge">realloc</code>操作重新分配内存；</li>
+  <li>新对象的<code class="language-plaintext highlighter-rouge">len</code>域和<code class="language-plaintext highlighter-rouge">alloc</code>域均为当前<code class="language-plaintext highlighter-rouge">len</code>域加1。</li>
+</ol>
+
+<h3 id="size_t-sdsallocsizesds-s"><code class="language-plaintext highlighter-rouge">size_t sdsAllocSize(sds s)</code></h3>
+<p>获取<code class="language-plaintext highlighter-rouge">sds</code>对象背后<code class="language-plaintext highlighter-rouge">sdshdr</code>结构完整的大小，包括以下几部分：</p>
+<ol>
+  <li>对象头；</li>
+  <li>缓冲区内容；</li>
+  <li>未使用空间；</li>
+  <li>结尾隐含的终止符。
+实现逻辑即<code class="language-plaintext highlighter-rouge">对象头长度+alloc域+1</code>，如下源码所示：</li>
+</ol>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><table class="rouge-table"><tbody><tr><td class="gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+</pre></td><td class="code"><pre><span class="c1">//sds.c:299#sdsAllocSize(sds)-&gt;size_t</span>
+<span class="kt">size_t</span> <span class="nf">sdsAllocSize</span><span class="p">(</span><span class="n">sds</span> <span class="n">s</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">size_t</span> <span class="n">alloc</span> <span class="o">=</span> <span class="n">sdsalloc</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
+    <span class="k">return</span> <span class="n">sdsHdrSize</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span><span class="o">+</span><span class="n">alloc</span><span class="o">+</span><span class="mi">1</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></pre></figure>
+
+<h3 id="void-sdsallocptrsds-s"><code class="language-plaintext highlighter-rouge">void *sdsAllocPtr(sds s)</code></h3>
+<p>获取<code class="language-plaintext highlighter-rouge">sds</code>对象背后<code class="language-plaintext highlighter-rouge">sdshdr</code>的地址，效果类似宏函数<code class="language-plaintext highlighter-rouge">SDS_HDR</code>，直接通过对象头获取对象头大小并偏移<code class="language-plaintext highlighter-rouge">sds</code>对象指针获得。实现如源码所示：</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><table class="rouge-table"><tbody><tr><td class="gutter gl"><pre class="lineno">1
+2
+3
+4
+</pre></td><td class="code"><pre><span class="c1">//sds.c:306#sdsAllocPtr(sds)-&gt;void *</span>
+<span class="kt">void</span> <span class="o">*</span><span class="nf">sdsAllocPtr</span><span class="p">(</span><span class="n">sds</span> <span class="n">s</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="p">)</span> <span class="p">(</span><span class="n">s</span><span class="o">-</span><span class="n">sdsHdrSize</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]));</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></pre></figure>
+
+<h2 id="api清单">API清单</h2>
+<p><code class="language-plaintext highlighter-rouge">sds</code>对象提供了众多操作函数，部分函数与 C 标准库字符串操作函数类似。下述表格列出 API 清单，并简单说明功能，API 顺序以头文件声明顺序为准。</p>
+
+<p><em>注：调用返回值为<code class="language-plaintext highlighter-rouge">sds</code>的函数后，应使用返回值作为新字符串使用，原字符串不应再有任何读写操作。</em></p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center">函数声明</th>
+      <th style="text-align: center">源码位置</th>
+      <th style="text-align: center">功能简要说明</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdsnewlen(const void *init, size_t initlen);</code></td>
+      <td style="text-align: center">sds.c:89</td>
+      <td style="text-align: center">指定二进制内容创建</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdsnew(const char *init);</code></td>
+      <td style="text-align: center">sds.c:154</td>
+      <td style="text-align: center">由 C 风格字符串创建</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdsempty(void);</code></td>
+      <td style="text-align: center">sds.c:149</td>
+      <td style="text-align: center">创建空对象</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdsdup(const sds s)</code></td>
+      <td style="text-align: center">sds.c:160</td>
+      <td style="text-align: center">复制字符串（深拷贝）</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">void sdsfree(sds s)</code></td>
+      <td style="text-align: center">sds.c:165</td>
+      <td style="text-align: center">释放对象</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdsgrowzero(sds s, size_t len)</code></td>
+      <td style="text-align: center">sds.c:379</td>
+      <td style="text-align: center">扩容字符串缓冲区至指定长度</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdscatlen(sds s, const void *t, size_t len)</code></td>
+      <td style="text-align: center">sds.c:397</td>
+      <td style="text-align: center">追加指定长度的二进制数据</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdscat(sds s, const char *t)</code></td>
+      <td style="text-align: center">sds.c:412</td>
+      <td style="text-align: center">追加 C 风格字符串</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdscatsds(sds s, const sds t)</code></td>
+      <td style="text-align: center">sds.c:420</td>
+      <td style="text-align: center">追加<code class="language-plaintext highlighter-rouge">sds</code>对象</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdscpylen(sds s, const char *t, size_t len)</code></td>
+      <td style="text-align: center">sds.c:426</td>
+      <td style="text-align: center">替换为指定长度的字符串</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdscpy(sds s, const char *t)</code></td>
+      <td style="text-align: center">sds.c:439</td>
+      <td style="text-align: center">替换为 C 风格字符串</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdscatvprintf(sds s, const char *fmt, va_list ap)</code></td>
+      <td style="text-align: center">sds.c:522</td>
+      <td style="text-align: center">按照格式写字符串入缓冲区（依靠标准库宏<code class="language-plaintext highlighter-rouge">vsnprintf</code>实现）</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdscatprintf(sds s, const char *fmt, ...)</code></td>
+      <td style="text-align: center">sds.c:522</td>
+      <td style="text-align: center">功能同<code class="language-plaintext highlighter-rouge">sdscatvprintf</code>，GNU 扩展，增加<code class="language-plaintext highlighter-rouge">__attribute__((format(printf, 2, 3)))</code>校验</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdscatfmt(sds s, char const *fmt, ...)</code></td>
+      <td style="text-align: center">sds.c:600</td>
+      <td style="text-align: center">功能同<code class="language-plaintext highlighter-rouge">sdscatvprintf</code>，未以来标准库，直接实现部分格式占位符的支持</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdstrim(sds s, const char *cset)</code></td>
+      <td style="text-align: center">sds.c:704</td>
+      <td style="text-align: center">从字符串左右两端去除指定的字符</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">void sdsrange(sds s, ssize_t start, ssize_t end)</code></td>
+      <td style="text-align: center">sds.c:735</td>
+      <td style="text-align: center">指定范围截取字符串</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">void sdsupdatelen(sds s)</code></td>
+      <td style="text-align: center">sds.c:184</td>
+      <td style="text-align: center">通过标准库函数<code class="language-plaintext highlighter-rouge">strlen</code>计算字符串长度并重新设置</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">void sdsclear(sds s)</code></td>
+      <td style="text-align: center">sds.c:193</td>
+      <td style="text-align: center">字符串首位置<code class="language-plaintext highlighter-rouge">\0</code>并设置长度为0</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">int sdscmp(const sds s1, const sds s2)</code></td>
+      <td style="text-align: center">sds.c:788</td>
+      <td style="text-align: center">比较两个字符串，相等条件为长度相同且内容一致<br />（通过<code class="language-plaintext highlighter-rouge">&lt;string.h&gt;#memcmp(const void *, const void *, size_t)-&gt;int</code>比较内容）</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds *sdssplitlen(const char *s, ssize_t len, const char *sep, int seplen, int *count);</code></td>
+      <td style="text-align: center">sds.c:816</td>
+      <td style="text-align: center">以子串<code class="language-plaintext highlighter-rouge">sep</code>为分割符分隔字符串(C 风格字符串和<code class="language-plaintext highlighter-rouge">sds</code>均可)，返回<code class="language-plaintext highlighter-rouge">sds</code>数组和长度，以<code class="language-plaintext highlighter-rouge">len</code>为原字符串长度保证二进制安全</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">void sdsfreesplitres(sds *tokens, int count)</code></td>
+      <td style="text-align: center">sds.c:867</td>
+      <td style="text-align: center">释放字符串数组空间</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">void sdstolower(sds s)</code></td>
+      <td style="text-align: center">sds.c:764</td>
+      <td style="text-align: center">字符串内英文字母变小写</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">void sdstoupper(sds s)</code></td>
+      <td style="text-align: center">sds.c:771</td>
+      <td style="text-align: center">字符串内英文字母变大写</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdsfromlonglong(long long value)</code></td>
+      <td style="text-align: center">sds.c:514</td>
+      <td style="text-align: center">整数转字符串</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdscatrepr(sds s, const char *p, size_t len)</code></td>
+      <td style="text-align: center">sds.c:880</td>
+      <td style="text-align: center">将字符串中不可打印字符转换并显示<br />如<code class="language-plaintext highlighter-rouge">\t</code>转为<code class="language-plaintext highlighter-rouge">\\t</code>，<code class="language-plaintext highlighter-rouge">U+000A</code>转换为<code class="language-plaintext highlighter-rouge">\x0A</code></td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds *sdssplitargs(const char *line, int *argc)</code></td>
+      <td style="text-align: center">sds.c:955</td>
+      <td style="text-align: center">通过空白分割符将字符串转换为 token 数组</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdsmapchars(sds s, const char *from, const char *to, size_t setlen)</code></td>
+      <td style="text-align: center">sds.c:1074</td>
+      <td style="text-align: center">转换字符串中的字符<br />如<code class="language-plaintext highlighter-rouge">from</code>为 <code class="language-plaintext highlighter-rouge">AB</code>，<code class="language-plaintext highlighter-rouge">to</code>为<code class="language-plaintext highlighter-rouge">CD</code>时表示 字符串中 A 替换为 C，B 替换为 D</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdsjoin(char **argv, int argc, char *sep)</code></td>
+      <td style="text-align: center">sds.c:1090</td>
+      <td style="text-align: center">将 C 风格字符串数组通过指定分割符合成一个字符串</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">sds sdsjoinsds(sds *argv, int argc, const char *sep, size_t seplen)</code></td>
+      <td style="text-align: center">sds.c:1102</td>
+      <td style="text-align: center">将<code class="language-plaintext highlighter-rouge">sds</code>数组通过指定分割符合成一个字符串</td>
+    </tr>
+  </tbody>
+</table>
+
+<h1 id="参考">参考</h1>
+<ul>
+  <li><a href="https://github.com/antirez/sds">antirez/sds</a></li>
+  <li><a href="https://github.com/redis/redis/tree/5.0.10">Redis源码（版本5.0.10）</a></li>
+  <li><a href="http://shuyuan.hzmedia.com.cn/ebookdtl?id=11112416">Redis设计与实现</a></li>
+</ul>
+
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time datetime="2021-02-16T00:00:00+00:00">February 16, 2021</time></p>
+
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/blog/redis/introduction" class="pagination--pager" title="Introduction
+">Previous</a>
+    
+    
+      <a href="/blog/redis/adlist" class="pagination--pager" title="Doubly Linked List
+">Next</a>
+    
+  </nav>
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+    </div>
+
+    
+      <div class="search-content">
+        <div class="search-content__inner-wrap"><form class="search-content__form" onkeydown="return event.key != 'Enter';">
+    <label class="sr-only" for="search">
+      Enter your search term...
+    </label>
+    <input type="search" id="search" class="search-input" tabindex="-1" placeholder="Enter your search term..." />
+  </form>
+  <div id="results" class="results"></div></div>
+
+      </div>
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        <div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/blog/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+<div class="page__footer-copyright">&copy; 2021 wqhyw's blog. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/minimal-mistakes-jekyll-theme/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/blog/assets/js/main.min.js"></script>
+
+
+
+
+<script src="/blog/assets/js/lunr/lunr.min.js"></script>
+<script src="/blog/assets/js/lunr/lunr-store.js"></script>
+<script src="/blog/assets/js/lunr/lunr-en.js"></script>
+
+
+
+
+
+
+
+  </body>
+</html>
